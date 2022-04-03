@@ -12,9 +12,10 @@ Version: Beta
 import signal, time, os, sys, re
 from .utils import *
 
+
 def __keyboardInterruptHandler(signal, frame):
-    print("KeyboardInterrupt (ID: {}) has been caught. Cleaning up...".format(signal))
-    exit(0)
+   print("KeyboardInterrupt (ID: {}) has been caught. Cleaning up...".format(signal))
+   exit(0)
 signal.signal(signal.SIGINT, __keyboardInterruptHandler)
 
 class InvalidFieldsError(Exception):
@@ -80,7 +81,7 @@ class GoogleMaps:
          if field in self.VALID_FIELDS:
             pass
          else:
-            raise InvalidFieldsError("1 or more of the fields entered are invalid!\n"\
+            raise InvalidFieldsError("1 or more of the fields entered are invalid!\n" \
                                      "Check self.VALID_FIELDS for reference.")
       return True
    def __attribute_fields(self, fields: list=[]):
@@ -100,9 +101,14 @@ class GoogleMaps:
             prefix = re.sub(r"\?q=", "/place/", self.__mq).replace('+', "\+")
             path = re.search(fr'{prefix}.+?/data.+?\\"', self.__resp.text).group()
             path = re.sub(r"\\\\u003d", '=', path)
-            coords = re.search(r"@-?\d\d?\.\d{4,8},-?\d\d?\.\d{4,8}",
-                               url_exists.group()).group()
-            self.coords = self.coordinates = tuple(coords.strip('@').split(','))
+            # Below two lines are written by @manmohit
+            coords = re.search(r"@(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+))," ,url_exists.group()).group()
+            self.coords = tuple(coords.split("@")[1].split(",")[:2])
+            # print("Coords: ", coords)
+            # Below comment lines are written by the developer of this lib
+            # coords = re.search(r"@-?\d\d?\.\d{4,8},-?\d\d?\.\d{4,8}",
+            #                    url_exists.group()).group()
+            # self.coords = self.coordinates = tuple(coords.strip('@').split(','))
             path = re.sub(r"/data", f"/{coords},17z/data", path)
             self.url = path[:-11] + "!8m2!3d" + re.sub(r",", "!4d", coords.strip('@'))
             title = re.search(r"(?<=https://www.google.com/maps/place/)\w+.*?/@",
@@ -208,6 +214,7 @@ class GoogleMapsResults:
 
    def __init__(self, q: str, page_num: int=1, url_args: str='',
                 delay: int=10, log: bool=False):
+      start_time = time.time()
       self.oq = re.sub(self.__sq, '', q.replace('+', ' '))
       self.query = self.__sq + quote_plus(self.oq)
       self.__pn = page_num; self.delay = delay
@@ -220,7 +227,10 @@ class GoogleMapsResults:
          try:
             self._place_names = self._get_place_names(self.oq) or [self.__n_a]
             if self._place_names[0] != self.__n_a:
-               for name in self._place_names:
+               for name in self._place_names[:1]:
+                  # splitted_name = name.split("\\\\")
+                  # name = ", ".join([splitted_name[0] , splitted_name[-1].split("u003dX")[1]])
+                  # Here GoogleMaps is served "
                   result = GoogleMaps(name, session=self.__sesh)
                   time.sleep(self.delay)
                   self.__results.append(result)
@@ -228,6 +238,8 @@ class GoogleMapsResults:
                      print(result)
             else:
                self.__results = self._place_names
+
+            print("---GoogleMapsResults Init %s seconds ---" % (time.time() - start_time))
          except KeyboardInterrupt:
             print("Interrupted Scrape!")
             try:
