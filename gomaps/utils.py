@@ -12,6 +12,8 @@ import pyppdf.patch_pyppeteer
 from requests_html import HTMLSession
 from urllib.parse import quote_plus, unquote_plus
 from GeoLiberator import parse_address
+from bs4 import BeautifulSoup
+
 
 __MQ = "https://www.google.com/maps?q="
 __SQ = "https://www.google.com/search?q="
@@ -92,7 +94,7 @@ def geocoder(location, reverse: bool=False): # gets geographical lat/long coordi
       except (TypeError, AttributeError):
          pass
       assert type(location) == tuple or type(location) == list, \
-             "Argument 'location' must be tuple, list, or string seprated by comma!"
+         "Argument 'location' must be tuple, list, or string seprated by comma!"
       q = str(location).strip("()")
       html = __direct_google_maps(q)
       got = re.search(r'\[\[\\"400.+?\\"\]\\n\]\\n\]\\n,.+?°', html)
@@ -150,6 +152,23 @@ def get_title(data: str) -> str: # parses title
       html = __direct_google_maps(data)
       return get_title(html)
 
+def get_title_for_GoogleMapsForUrl(data: str) -> str: # parses title
+   '''Searches for the title or name of a location
+
+   :param data: A place name, address or lat/long coordinates
+
+   :returns: Returns a string of the location's title'''
+   soup = BeautifulSoup(data, "lxml")
+   list_of_heading_tag = soup.find_all("h1")
+   regex_pattern= re.compile("header-title-title")
+   title = ""
+   for heading_tag in list_of_heading_tag:
+      if heading_tag.has_attr("class"):
+         class_str = heading_tag["class"]
+         if len(class_str)>1 and  bool(regex_pattern.search(heading_tag["class"][0])):
+            title = heading_tag.span.text
+   return title
+
 def get_address(data: str, validate=False): # parses address
    '''Searches for the full address of a location
 
@@ -175,12 +194,22 @@ def get_address(data: str, validate=False): # parses address
             return None
    else:
       assert type(data) != tuple or type(data) != list, \
-             "If you wish to get address from coordinates, use 'gomaps.geocoder()'"
+         "If you wish to get address from coordinates, use 'gomaps.geocoder()'"
       q = __clean_location(str(data))
       if q != "OTHER":
          validate = True
       html = __direct_google_search(q)
       return get_address(html, validate)
+
+def get_address_for_GoogleMapsForUrl(data: str, validate=False): # parses address
+   soup = BeautifulSoup(data, "lxml")
+   list_of_buttons = soup.find_all("button")
+   regex_pattern= re.compile("Address:")
+   address = ""
+   for button in list_of_buttons:
+      if button.has_attr("aria-label") and  bool(regex_pattern.search(button["aria-label"])):
+         address = button["aria-label"].split("Address: ")[1].strip()
+   return address
 
 def get_website(data: str) -> str: # parses website
    '''Searches for the website (if any) of a location
@@ -206,21 +235,67 @@ def get_website(data: str) -> str: # parses website
       html = __direct_google_search(data)
       return get_website(html)
 
+def get_website_for_GoogleMapsForUrl(data: str) -> str: # parses website
+   soup = BeautifulSoup(data, "lxml")
+   list_of_buttons = soup.find_all("button")
+   regex_pattern= re.compile("Website:")
+   website = ""
+   for button in list_of_buttons:
+      if button.has_attr("aria-label") and  bool(regex_pattern.search(button["aria-label"])):
+         website = button["aria-label"].split(": ")[1].strip()
+   return website
+
+# def get_phone_number(data: str) -> str: # parses phone number
+#    '''Searches for the phone number (if any) of a location
+#
+#    :param data: A place name, address or lat/long coordinates
+#
+#    :returns: Returns a string of the location's phone number'''
+#
+#    if len(data) > 128:
+#       try:
+#          phone = re.search(r"<span>^\s*(?:\+?(\d{1,3}))?[-. (]*(\d{3})[-. )]*(\d{3})[-. ]*(\d{4})(?: *x(\d+))?\s*$</span>", data)
+#          print("Phone: ", phone)
+#          return re.search(r"\(?\d{3}\)? \d{3}-\d{4}", phone.group()).group()
+#       except (TypeError, AttributeError):
+#          return None
+#    else:
+#       html = __direct_google_search(data)
+#       return get_phone_number(html)
+
 def get_phone_number(data: str) -> str: # parses phone number
    '''Searches for the phone number (if any) of a location
 
    :param data: A place name, address or lat/long coordinates
 
    :returns: Returns a string of the location's phone number'''
-   if len(data) > 128:
-      try:
-         phone = re.search(r"Phone</a>: </span>.+?</span>", data)
-         return re.search(r"\(?\d{3}\)? \d{3}-\d{4}", phone.group()).group()
-      except (TypeError, AttributeError):
-         return None
-   else:
-      html = __direct_google_search(data)
-      return get_phone_number(html)
+
+   soup = BeautifulSoup(data, "lxml")
+   list_of_spans = soup.find_all("span")
+   regex_pattern= re.compile("^\s*(?:\+?(\d{1,3}))?[-. (]*(\d{3})[-. )]*(\d{3})[-. ]*(\d{4})(?: *x(\d+))?\s*$")
+   phone_number = ""
+   for span_item in list_of_spans:
+      stripped_text = span_item.text.strip().replace(" ", "")
+      if bool(regex_pattern.search(stripped_text)):
+         phone_number = stripped_text
+   return phone_number
+
+
+def get_phone_number_for_GoogleMapsForUrl(data: str) -> str: # parses phone number
+   '''Searches for the phone number (if any) of a location
+
+   :param data: A place name, address or lat/long coordinates
+
+   :returns: Returns a string of the location's phone number'''
+
+   soup = BeautifulSoup(data, "lxml")
+   list_of_buttons = soup.find_all("button")
+   regex_pattern= re.compile("phone:")
+   phone_number = ""
+   for button in list_of_buttons:
+      if button.has_attr("data-item-id") and  bool(regex_pattern.search(button["data-item-id"])):
+         phone_number = button["data-item-id"].split("tel:")[1]
+   return phone_number
 
 def get_rating(data: str) -> float: # parses rating
    '''Searches for the rating (if any) of a location
@@ -237,6 +312,68 @@ def get_rating(data: str) -> float: # parses rating
    else:
       html = __direct_google_search(data)
       return get_rating(html)
+
+def get_rating_for_GoogleMapsForUrl(data: str) -> float: # parses rating
+   soup = BeautifulSoup(data, "lxml")
+   list_of_ol_tags = soup.find_all("ol")
+   regex_pattern= re.compile("stars")
+   rating = ""
+   for ol_tag in list_of_ol_tags:
+      if ol_tag.has_attr("aria-label") and  bool(regex_pattern.search(ol_tag["aria-label"])):
+         rating = ol_tag["aria-label"].split(" stars")[0].strip()
+   return float(rating)
+
+def get_review_count(data: str) -> int: # parses rating
+   '''Searches for the rating (if any) of a location
+
+    :param data: A place name, address or lat/long coordinates
+
+    :returns: Returns a int of the location's rating'''
+   if len(data) > 128:
+      try:
+         review_count = re.search(r"\d+ Google reviews", data)
+         return int(review_count.group().strip(" Google reviews").strip())
+      except (TypeError, AttributeError):
+         return None
+   else:
+      html = __direct_google_search(data)
+      return get_rating(html)
+
+
+def get_review_count_for_GoogleMapsForUrl(data: str) -> int: # parses rating
+   soup = BeautifulSoup(data, "lxml")
+   # list_of_buttons = soup.find_all("button")
+   # regex_pattern= re.compile("[0-9]+(,[0-9]+)+ reviews$")
+   review_count = 0
+   review_button = soup.find("button", {"jsaction":"pane.rating.moreReviews"})
+   # for button in list_of_buttons:
+   #    if button.has_attr("aria-label") and  bool(regex_pattern.search(button["aria-label"])):
+   #       review_count = button["aria-label"].split(" ")[0]
+   #       print(review_count)
+   if review_button:
+      review_count = int(review_button.text.split(" ")[0].replace(",","").strip())
+   return review_count
+
+def get_price_type(data: str) -> str: # parses rating
+   soup = BeautifulSoup(data, "lxml")
+   list_of_spans = soup.find_all("span")
+   regex_pattern= re.compile("expensive")
+   price_type = ""
+   for span_item in list_of_spans:
+      if span_item.has_attr("aria-label") and  bool(regex_pattern.search(span_item["aria-label"])):
+         price_type = span_item.text.strip()
+   return price_type
+
+def get_price_type_for_GoogleMapsForUrl(data: str) -> str: # parses rating
+   soup = BeautifulSoup(data, "lxml")
+   list_of_spans = soup.find_all("span")
+   regex_pattern= re.compile("Price: ")
+   price_type = ""
+   for span_item in list_of_spans:
+      if span_item.has_attr("aria-label") and  bool(regex_pattern.search(span_item["aria-label"])):
+         price_type = span_item.text.strip()
+   return price_type
+
 
 def get_open_hours(data: str) -> dict: # parses open hours
    '''Searches for the open hours (if any) of a location
